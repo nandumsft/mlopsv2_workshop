@@ -1,0 +1,5 @@
+$schema: https://azuremlschemas.azureedge.net/latest/data.schema.json
+type: uri_file
+name: taxidata
+description: taxi dataset
+path: azureml://datastores/trainingbscli/paths/taxitraining/taxi-data.csv

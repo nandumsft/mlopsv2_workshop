@@ -1,0 +1,8 @@
+$schema: https://azuremlschemas.azureedge.net/latest/azureBlob.schema.json 
+name: trainingbscli
+type: azure_blob
+description: DataStore pointing to a blob container 
+account_name: sthqkbbjgbyuujqdev 
+container_name: trainingdata 
+credentials:
+  account_key: 'get+key'

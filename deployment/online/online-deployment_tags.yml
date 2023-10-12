@@ -1,0 +1,9 @@
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
+name: blue
+endpoint_name: taxi-fare-online-tagcollector2
+model: azureml:taxi-model@latest
+instance_type: Standard_DS3_v2
+instance_count: 1
+tags:
+  {"data_collector.collections.request.enabled" : "true",
+   "data_collector.collections.response.enabled" : "true"}

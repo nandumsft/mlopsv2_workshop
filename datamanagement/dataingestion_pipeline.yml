@@ -1,0 +1,71 @@
+trigger: none 
+
+# schedules: 
+#   - cron: '*/15 * * * *'
+#     displayName: 'data ingestion'
+#     branches:
+#        include: 
+#        - master
+#     always: true
+variables:
+  - template: ../config-infra-prod.yml
+  - name: resource_group
+    value: rg-akom-06dev
+  - name: aml_workspace 
+    value: mlw-akom06dev
+  - name: ado_service_connection_aml_ws
+    value: prod
+  - name: ado_service_connection_rg
+    value: prod
+pool:
+    vmImage: ubuntu-latest
+
+stages:
+  - stage: DataIngestion
+    jobs:
+      - job: Datacreation 
+        steps:
+          - checkout: self
+            path: s/        
+          - task: AzureCLI@2
+            displayName: Install AZ ML dependencies
+            inputs:
+              azureSubscription: prod
+              scriptType: bash
+              scriptLocation: inlineScript
+              workingDirectory: $(System.DefaultWorkingDirectory)
+              inlineScript: |
+                set -e # fail on error
+                python -m pip install -U --force-reinstall pip pip install azure-cli==2.35
+                python -m pip install -U --force-reinstall pip pip install azure-ai-ml==1.1.0
+                python -m pip install -U --force-reinstall pip pip install azure-common==1.1.28
+                python -m pip install -U --force-reinstall pip pip install azure-core==1.26.1
+                python -m pip install -U --force-reinstall pip pip install azure-identity==1.10.0
+                python -m pip install -U --force-reinstall pip pip install azure-mgmt-core==1.3.0 
+                python -m pip install -U --force-reinstall pip pip install azure-storage-blob==12.14.1
+                python -m pip install -U --force-reinstall pip pip install azure-storage-file-datalake==12.9.1
+                python -m pip install -U --force-reinstall pip pip install azure-storage-file-share==12.7.0
+                az version 
+          - task: AzureCLI@2
+            displayName: Install AML CLI v2
+            inputs:
+              azureSubscription: prod
+              scriptType: bash
+              scriptLocation: inlineScript
+              workingDirectory: $(System.DefaultWorkingDirectory)
+              inlineScript: |
+                set -e # fail on error
+                az version
+                az extension add -n ml -y
+                az extension update -n ml
+                az extension list
+          - task: AzureCLI@2
+            displayName: Create_dataasset_uri
+            continueOnError: true
+            inputs: 
+                azureSubscription: $(ado_service_connection_rg) #needs to have access at the RG level 
+                scriptType: bash
+                scriptLocation: inlineScript
+                workingDirectory: $(System.DefaultWorkingDirectory)
+                inlineScript: |
+                  az ml data create --file ./datamanagement/data.yml --name "taxitrainingfile"  --resource-group $(resource_group) --workspace-name $(aml_workspace)

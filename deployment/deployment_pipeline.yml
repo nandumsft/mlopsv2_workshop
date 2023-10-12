@@ -1,0 +1,102 @@
+trigger: none 
+
+# Change the endpoint name
+variables:
+  - template: ../config-infra-prod.yml
+  - name: resource_group
+    value: rg-experimental
+  - name: aml_workspace 
+    value: mlw-experimental
+  - name: ado_service_connection_aml_ws
+    value: prod
+  - name: ado_service_connection_rg
+    value: prod
+  - name: endpoint
+    value: taxi-fare-online-collectorexp
+pool:
+    vmImage: ubuntu-latest
+
+stages:
+  - stage: Deployment
+    jobs:
+      - job: Deployment 
+        steps:
+          - checkout: self
+            path: s/        
+          - task: AzureCLI@2
+            displayName: Install AZ ML dependencies
+            inputs:
+              azureSubscription: prod
+              scriptType: bash
+              scriptLocation: inlineScript
+              workingDirectory: $(System.DefaultWorkingDirectory)
+              inlineScript: |
+                set -e # fail on error
+                python -m pip install -U --force-reinstall pip pip install azure-cli==2.35
+                python -m pip install -U --force-reinstall pip pip install azure-ai-ml==1.1.0
+                python -m pip install -U --force-reinstall pip pip install azure-common==1.1.28
+                python -m pip install -U --force-reinstall pip pip install azure-core==1.26.1
+                python -m pip install -U --force-reinstall pip pip install azure-identity==1.10.0
+                python -m pip install -U --force-reinstall pip pip install azure-mgmt-core==1.3.0 
+                python -m pip install -U --force-reinstall pip pip install azure-storage-blob==12.14.1
+                python -m pip install -U --force-reinstall pip pip install azure-storage-file-datalake==12.9.1
+                python -m pip install -U --force-reinstall pip pip install azure-storage-file-share==12.7.0
+                az version 
+          - task: AzureCLI@2
+            displayName: Install AML CLI v2
+            inputs:
+              azureSubscription: prod
+              scriptType: bash
+              scriptLocation: inlineScript
+              workingDirectory: $(System.DefaultWorkingDirectory)
+              inlineScript: |
+                set -e # fail on error
+                az version
+                az extension add -n ml -y
+                az extension update -n ml
+                az extension list
+          - task: AzureCLI@2
+            displayName: Create endpoint
+            continueOnError: true
+            inputs: 
+                azureSubscription: $(ado_service_connection_rg) #needs to have access at the RG level 
+                scriptType: bash
+                scriptLocation: inlineScript
+                workingDirectory: $(System.DefaultWorkingDirectory)
+                inlineScript: |
+
+                        ENDPOINT_EXISTS=$(az ml online-endpoint list -o tsv --query "[?name=='$(endpoint)'][name]" --resource-group $(resource_group) --workspace-name $(aml_workspace) | wc -l)
+                        echo $ENDPOINT_NAME $ENDPOINT_EXISTS
+                        az ml online-endpoint list -o tsv
+
+                        if [[ ENDPOINT_EXISTS -ne 1 ]]; then
+                            az ml online-endpoint create --file ./deployment/online/online-endpoint-collector.yml --resource-group $(resource_group) --workspace-name $(aml_workspace)
+                        else
+                            echo "Endpoint exists"
+                        fi                
+          - task: AzureCLI@2
+            displayName: Create deployment
+            continueOnError: true
+            inputs: 
+                azureSubscription: $(ado_service_connection_rg) #needs to have access at the RG level 
+                scriptType: bash
+                scriptLocation: inlineScript
+                workingDirectory: $(System.DefaultWorkingDirectory)
+                inlineScript: |
+                        DEPLOYMENT_EXISTS=$(az ml online-deployment list -o tsv --query "[?endpoint_name=='$(endpoint)'][name]" --resource-group $(resource_group) --workspace-name $(aml_workspace) --endpoint-name $(endpoint)| wc -l)
+
+                        if [[ DEPLOYMENT_EXISTS -ne 1 ]]; then
+                            az ml online-deployment create --file ./deployment/online/online-deployment-collector.yml --resource-group $(resource_group) --workspace-name $(aml_workspace)
+                        else
+                            az ml online-deployment update --file ./deployment/online/online-deployment-collector.yml --resource-group $(resource_group) --workspace-name $(aml_workspace)
+                        fi
+
+          - task: AzureCLI@2
+            displayName: Update traffic allocation
+            inputs:
+                azureSubscription: $(ado_service_connection_rg) #needs to have access at the RG level 
+                scriptType: bash
+                scriptLocation: inlineScript
+                inlineScript: |
+                  set -e
+                  az ml online-endpoint update --name $(endpoint) --traffic "blue=100"  --resource-group $(resource_group) --workspace-name $(aml_workspace)                           

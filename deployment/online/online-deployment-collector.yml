@@ -1,0 +1,20 @@
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
+name: blue
+endpoint_name:  taxi-fare-online-collectorexp
+model: azureml:taxi-model-auto@latest
+environment:
+  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
+  conda_file: ./conda-deploy.yaml
+code_configuration:
+  code: scripts
+  scoring_script: score.py
+instance_type: Standard_DS3_v2
+instance_count: 1
+data_collector:
+  collections:
+    model_inputs:
+      enabled: 'True'
+    model_outputs:
+      enabled: 'True'
+    model_inputs_outputs:
+      enabled: 'True'

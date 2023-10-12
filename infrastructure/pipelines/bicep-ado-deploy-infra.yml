@@ -1,0 +1,90 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+name: bicep-ado-deploy-infra
+
+variables:
+  - name: resource_group
+    value: rg-akom-07dev
+  - name: aml_workspace 
+    value: mlw-akom07dev
+  - name: ado_service_connection_aml_ws
+    value: prod
+  - name: ado_service_connection_rg
+    value: prod
+  - name: location
+    value: eastus
+  - name: postfix 
+    value: 003
+  - name: prefix 
+    value: komalopsv2    
+
+  - name: environment
+    value: dev
+  - name: ap_vm_image
+    value: ubuntu-20.04
+
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: Lint
+    displayName: Lint and Preflight check
+    jobs:
+      - job: LintBicep
+        displayName: Lint Bicep Code
+        steps:
+          - checkout: self
+          - script: |
+              az bicep build --file ./infrastructure/main1.bicep
+            name: LintBicepCode
+            displayName: Run Bicep Linter
+
+  - stage: PreflightValidation
+    jobs:
+      - job: ValidateBicepCode
+        displayName: Validate Bicep Code
+        steps:
+          - task: AzureCli@2
+            name: RunPreflightValidateion
+            displayName: Run Preflight Validation
+            inputs:
+              azureSubscription: $(ado_service_connection_rg)
+              scriptType: "bash"
+              scriptLocation: "inlineScript"
+              inlineScript: |
+                az deployment sub validate \
+                  --name mlops-infra \
+                  --template-file ./infrastructure/main1.bicep \
+                  --location $(location) \
+                  --parameters location=$(location) prefix=$(resource_group) env=$(environment)
+
+  - stage: CheckOutBicepAndDeploy
+    displayName: Deploy AML Workspace
+    jobs:
+      - deployment: DevDeployBicep
+        displayName: Deploy Bicep
+        pool:
+          vmImage: $(ap_vm_image)
+        environment: $(environment)
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: AzureCLI@2
+                  displayName: Running ${{ variables.environment }} Deployment
+                  inputs:
+                    azureSubscription: $(ado_service_connection_rg)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      az --version
+                      echo "deploying bicep..."
+                      az deployment sub create \
+                        --name mlops-infra \
+                        --location $(location) \
+                        --template-file ./infrastructure/main1.bicep \
+                        --parameters location=$(location) prefix=$(resource_group) env=$(environment)
